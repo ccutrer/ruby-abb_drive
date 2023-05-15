@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "abb_drive"
+
+require "homie-mqtt"
+require "mqtt/home_assistant"
+
+require "optparse"
+
+slave_id = 1
+
+options = OptionParser.new do |opts|
+  opts.banner = "Usage: abb_drive_mqtt_bridge /path/to/serial/port mqtt://uri/ [options]"
+
+  opts.on("-s", "--slave=ID", Integer, "ModBus Slave ID of the drive") { |v| slave_id = v }
+  opts.on("-v", "--version", "Print version") do
+    puts ABB::Drive::VERSION
+    exit
+  end
+  opts.on("-h", "--help", "Prints this help") do
+    puts opts
+    exit
+  end
+end
+
+options.parse!
+
+unless ARGV.length == 2
+  puts options
+  exit 1
+end
+
+mqtt_uri = ARGV[1]
+
+drive = ABB::Drive.new(ARGV[0], slave_id)
+drive.poll
+
+mutex = Mutex.new
+homie = MQTT::Homie::Device.new("abb", "ABB ACS550", mqtt: mqtt_uri)
+homie.node("drive", "Drive", "ACS550") do |node|
+  node.property("power", "Power", :boolean, drive.power) { |value| mutex.synchronize { drive.power = value } }
+  node.property("reference1-percent", "Reference 1", :float, drive.reference1 / drive.reference1_max * 100, format: 0..100, unit: "%") { |value| mutex.synchronize { drive.reference1 = value * drive.reference1_max / 100 } }
+  node.property("reference1", "Reference 1", :float, drive.reference1, format: 0..drive.reference1_max, unit: "rpm") { |value| mutex.synchronize { drive.reference1 = value } }
+  node.property("speed", "Speed", :integer, drive.speed)
+  node.property("frequency", "Frequency", :float, drive.frequency, unit: "Hz")
+  node.property("current", "Current", :float, drive.current, unit: "A")
+end
+node = homie["drive"]
+
+homie.publish
+
+loop do
+  mutex.synchronize { drive.poll }
+  node.each do |prop|
+    if prop.id == "reference1-percent"
+      prop.value = drive.on? ? drive.reference1 / drive.reference1_max * 100 : 0
+      next
+    end
+
+    prop.value = drive.send(prop.id)
+  end
+
+  sleep 1
+end
