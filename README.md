@@ -9,7 +9,8 @@ the same ABB Limited Drive Profile.
 Don't care for the nitty gritty details? Here's the easy path! You'll need a
 Raspberry Pi (tested on a Pi Zero W and a Pi 4), a
 [USB RS-485 adapter](https://www.amazon.com/gp/product/B07B416CPK),
-and some wire. Follow drive's installation manual to connect RS485 + and -
+and some wire. Any adapter based on the MAX485 chip is _not_ supported.
+Follow drive's installation manual to connect RS485 + and -
 to the appropriate terminals on the USB RS485 adapter.
 
 ### Software
